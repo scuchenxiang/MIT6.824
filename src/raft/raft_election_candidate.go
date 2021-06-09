@@ -31,7 +31,7 @@ func (rf *Raft) askForVote(server int, startTerm int, lastLogIndex int, lastLogT
 
 	args:=&RequestVoteArgs{
 		Term:startTerm,
-		CandidateId:server,
+		CandidateId:rf.me,
 		LastLogIndex:lastLogIndex,
 		LastLogTerm:lastLogTerm}
 	reply:=&RequestVoteReply{}

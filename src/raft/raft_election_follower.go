@@ -43,7 +43,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if moreUpToDate(rf.getLastLogIndex(), rf.getLastLogTerm(), args.LastLogIndex, args.LastLogTerm) {
 		DPrintf("[RequestVote] %v cant give vote to %v because he is too old, lastLogIndex=%v, lastLogTerm=%v, his LastLogIndex=%v, LastLogTerm=%v", rf.me, args.CandidateId, rf.getLastLogIndex(), rf.getLastLogTerm(), args.LastLogIndex, args.LastLogTerm)
 		reply.VoteGranted = false
-	} else if rf.votedFor == args.CandidateId || rf.votedFor == -1 {
+	} else if rf.votedFor == args.CandidateId || rf.votedFor == -1 {//这个判断防止fig8的情况
 		// Follower have voted to him or havenot vote yet, then give out tickect.
 		DPrintf("[RequestVote] %v give vote to %v, lastLogIndex=%v, lastLogTerm=%v, his LastLogIndex=%v, LastLogTerm=%v", rf.me, args.CandidateId, rf.getLastLogIndex(), rf.getLastLogTerm(), args.LastLogIndex, args.LastLogTerm)
 		rf.votedFor = args.CandidateId
@@ -51,7 +51,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.VoteGranted = true
 		rf.refreshElectionTimeout()
 		rf.persist()
-	} else {
+	} else {//可能是fig8的情况
 		// 在任期日志符合要求但是已经投票并且没有投我的情况下
 		DPrintf("[RequestVote] %v this term has voted to %v", rf.me, rf.votedFor)
 		reply.VoteGranted = false
