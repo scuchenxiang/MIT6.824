@@ -1,7 +1,5 @@
 package shardkv
 
-import "6.824/labgob"
-
 //
 // Sharded key/value server.
 // Lots of replica groups, each running op-at-a-time paxos.
@@ -12,120 +10,85 @@ import "6.824/labgob"
 //
 
 const (
-	OK             = "OK"//
-	ErrNoKey       = "ErrNoKey"
-	ErrWrongGroup  = "ErrWrongGroup"
-	ErrWrongLeader = "ErrWrongLeader"
-	ErrTimeOut     = "ErrTimeOut"
+	OK            = "OK"
+	ErrNoKey      = "ErrNoKey"
+	ErrWrongGroup = "ErrWrongGroup"
+	ErrInTransit  = "ErrInTransit"
 )
 
 type Err string
 
-func init() {//gob.Register(Inner{})告诉系统：所有的Interface是有可能为Inner结构的。
-	labgob.Register(PutAppendArgs{})
-	labgob.Register(PutAppendReply{})
-	labgob.Register(GetArgs{})
-	labgob.Register(GetReply{})
-	labgob.Register(FetchShardDataArgs{})
-	labgob.Register(FetchShardDataReply{})
-	labgob.Register(CleanShardDataArgs{})
-	labgob.Register(CleanShardDataReply{})
-	labgob.Register(MergeShardData{})
+// ------------------------
+// Basic Bundles
+// ------------------------
 
+type ShardVer struct {
+	Shard   	 int
+	VerNum  	 int
+	ConfNum		 int
+}
+
+type ServerValid struct {
+	Servers 	 []string
+	Valid   	 bool
+}
+
+type ReplyRes struct {
+	Value   	 string
+	InOp    	 Op
+	WrongGroup 	 bool
+	InTransit    bool
+}
+
+// ------------------------
+// RPC's
+// ------------------------
+
+type PullShardArgs struct {
+	Shard 	     int
+	VerNum	     int
+	ConfNum		 int
+}
+
+type PullShardReply struct {
+	KvDb    	 map[string]string
+	CltSqn  	 map[int64]int64
+	ShardVer 	 int
+	Success      bool
+}
+
+type DeleteShardArgs struct {
+	Shard 	     int
+	VerNum	     int
+	ConfNum		 int
+}
+
+type DeleteShardReply struct {
+	Success 	 bool
 }
 
 // Put or Append
 type PutAppendArgs struct {
-	// You'll have to add definitions here.
-	Key   string
-	Value string
-
-	Op        string // "Put" or "Append"
-	ClientId  int64// 发起的客户端ID
-	MsgId     int64//MSG ID
-	ConfigNum int//此时的configID
-	// You'll have to add definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
-}
-//复制putappend参数
-func (c *PutAppendArgs) copy() PutAppendArgs {
-	r := PutAppendArgs{
-		Key:       c.Key,
-		Value:     c.Value,
-		Op:        c.Op,
-		ClientId:  c.ClientId,
-		MsgId:     c.MsgId,
-		ConfigNum: c.ConfigNum,
-	}
-	return r
+	Key   		 string
+	Value 		 string
+	Op    		 string  // "Put" or "Append"
+	CltId  		 int64
+	SeqNum 		 int64
 }
 
 type PutAppendReply struct {
-	Err Err
+	WrongLeader  bool
+	Err          Err
 }
 
 type GetArgs struct {
-	Key       string
-	ClientId  int64
-	MsgId     int64
-	ConfigNum int
-	// You'll have to add definitions here.
-}
-
-func (c *GetArgs) copy() GetArgs {
-	r := GetArgs{
-		Key:       c.Key,
-		ClientId:  c.ClientId,
-		MsgId:     c.MsgId,
-		ConfigNum: c.ConfigNum,
-	}
-	return r
+	Key 	     string
+	CltId  	 	 int64
+	SeqNum 		 int64
 }
 
 type GetReply struct {
-	Err   Err
-	Value string
-}
-
-type FetchShardDataArgs struct {
-	ConfigNum int
-	ShardNum  int
-}
-
-type FetchShardDataReply struct {
-	Success    bool
-	MsgIndexes map[int64]int64
-	Data       map[string]string
-}
-
-func (reply *FetchShardDataReply) Copy() FetchShardDataReply {
-	res := FetchShardDataReply{
-		Success:    reply.Success,
-		Data:       make(map[string]string),
-		MsgIndexes: make(map[int64]int64),
-	}
-	for k, v := range reply.Data {
-		res.Data[k] = v
-	}
-	for k, v := range reply.MsgIndexes {
-		res.MsgIndexes[k] = v
-	}
-	return res
-}
-
-type CleanShardDataArgs struct {
-	ConfigNum int
-	ShardNum  int
-}
-
-type CleanShardDataReply struct {
-	Success bool
-}
-
-type MergeShardData struct {
-	ConfigNum  int
-	ShardNum   int
-	MsgIndexes map[int64]int64
-	Data       map[string]string
+	WrongLeader  bool
+	Err          Err
+	Value        string
 }

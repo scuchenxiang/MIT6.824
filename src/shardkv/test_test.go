@@ -224,15 +224,17 @@ func TestMissChange(t *testing.T) {
 	ck := cfg.makeClient()
 
 	cfg.join(0)
-
+	
 	n := 10
 	ka := make([]string, n)
 	va := make([]string, n)
+
 	for i := 0; i < n; i++ {
 		ka[i] = strconv.Itoa(i) // ensure multiple shards
 		va[i] = randstring(20)
 		ck.Put(ka[i], va[i])
 	}
+
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 	}
@@ -262,7 +264,6 @@ func TestMissChange(t *testing.T) {
 		ck.Append(ka[i], x)
 		va[i] += x
 	}
-
 	cfg.StartServer(0, 0)
 	cfg.StartServer(1, 0)
 	cfg.StartServer(2, 0)
@@ -273,7 +274,7 @@ func TestMissChange(t *testing.T) {
 		ck.Append(ka[i], x)
 		va[i] += x
 	}
-
+	fmt.Printf("sfd1")
 	time.Sleep(2 * time.Second)
 
 	cfg.ShutdownServer(0, 1)
@@ -282,18 +283,15 @@ func TestMissChange(t *testing.T) {
 
 	cfg.join(0)
 	cfg.leave(2)
-
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
 		ck.Append(ka[i], x)
 		va[i] += x
 	}
-
 	cfg.StartServer(0, 1)
 	cfg.StartServer(1, 1)
 	cfg.StartServer(2, 1)
-
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 	}

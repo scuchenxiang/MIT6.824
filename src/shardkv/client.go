@@ -8,13 +8,12 @@ package shardkv
 // talks to the group that holds the key's shard.
 //
 
-import (
-	"6.824/labrpc"
-)
+import "6.824/labrpc"
 import "crypto/rand"
 import "math/big"
 import "6.824/shardctrler"
 import "time"
+// import "fmt"
 
 //
 // which shard is a key in?
@@ -41,16 +40,9 @@ type Clerk struct {
 	sm       *shardctrler.Clerk
 	config   shardctrler.Config
 	make_end func(string) *labrpc.ClientEnd
-	// You will have to modify this struct.
-	clientId int64
-}
 
-func (ck *Clerk) log(format string, val ...interface{}) {
-	// fmt.Printf(format + "\n", val...)
-}
-
-func (ck *Clerk) getConfigNum() int {
-	return ck.config.Num
+	id 	   int64
+	seqnum int64
 }
 
 //
@@ -66,8 +58,10 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	ck := new(Clerk)
 	ck.sm = shardctrler.MakeClerk(masters)
 	ck.make_end = make_end
-	// You'll have to add code here.
-	ck.clientId = nrand()
+
+	ck.id = nrand()
+	ck.seqnum = 0
+
 	return ck
 }
 
@@ -78,34 +72,33 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 // You will have to modify this function.
 //
 func (ck *Clerk) Get(key string) string {
-	args := GetArgs{}
-	args.MsgId = nrand()// args 的ID是随机生成的（这种方法只能保证大概率不重）
-	args.ClientId = ck.clientId
-	args.Key = key
+	ck.seqnum += 1
+
+	args := GetArgs{Key:key, CltId:ck.id, SeqNum:ck.seqnum}
 
 	for {
-		args.ConfigNum = ck.getConfigNum()
-		shard := key2shard(key)//获取需要取得的shard号码
-		gid := ck.config.Shards[shard]//获取对应shard的group的号
+		shard := key2shard(key)
+		gid := ck.config.Shards[shard]
 		if servers, ok := ck.config.Groups[gid]; ok {
 			// try each server for the shard.
 			for si := 0; si < len(servers); si++ {
 				srv := ck.make_end(servers[si])
 				var reply GetReply
 				ok := srv.Call("ShardKV.Get", &args, &reply)
-				if ok && (reply.Err == OK || reply.Err == ErrNoKey) {
+				if ok && reply.WrongLeader == false && (reply.Err == OK || reply.Err == ErrNoKey) {
 					return reply.Value
 				}
-				if ok && (reply.Err == ErrWrongGroup) {
+				if ok && (reply.Err == ErrWrongGroup) {  // shard in other groups
 					break
 				}
-				// ErrWrongLeader的情况下尝试其他的server
+				if ok && (reply.Err == ErrInTransit) {  // during transition
+					break
+				}
 			}
 		}
-		//如果group错误或者config更新
 		time.Sleep(100 * time.Millisecond)
-		// 获取最新的config
-		ck.config = ck.sm.Query(ck.config.Num + 1)
+		// ask master for the latest configuration.
+		ck.config = ck.sm.Query(-1)
 	}
 
 	return ""
@@ -114,38 +107,34 @@ func (ck *Clerk) Get(key string) string {
 //
 // shared by Put and Append.
 // You will have to modify this function.
-//操作与Get类似
+//
 func (ck *Clerk) PutAppend(key string, value string, op string) {
-	args := PutAppendArgs{}
-	args.MsgId = nrand()
-	args.ClientId = ck.clientId
-	args.Key = key
-	args.Value = value
-	args.Op = op
+	ck.seqnum += 1
+
+	args := PutAppendArgs{Key:key, Value:value, Op:op, CltId:ck.id, SeqNum:ck.seqnum}
 
 	for {
-		args.ConfigNum = ck.getConfigNum()
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
 		if servers, ok := ck.config.Groups[gid]; ok {
-			ck.log("shardclient: config:%+v, servers:%+v\n", ck.config, servers)
 			for si := 0; si < len(servers); si++ {
 				srv := ck.make_end(servers[si])
 				var reply PutAppendReply
 				ok := srv.Call("ShardKV.PutAppend", &args, &reply)
-				if ok && reply.Err == OK {
-					ck.log("shardclient: putappendok, config:%+v, args:%+v\n", ck.config, args)
+				if ok && reply.WrongLeader == false && reply.Err == OK {
 					return
 				}
-				if ok && reply.Err == ErrWrongGroup {
+				if ok && reply.Err == ErrWrongGroup {  // shard in other groups
 					break
 				}
-				// ... not ok, or ErrWrongLeader
+				if ok && (reply.Err == ErrInTransit) {  // during transition
+					break
+				}
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
 		// ask master for the latest configuration.
-		ck.config = ck.sm.Query(ck.config.Num + 1)
+		ck.config = ck.sm.Query(-1)
 	}
 }
 
