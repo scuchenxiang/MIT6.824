@@ -10,8 +10,10 @@ import (
 // import "time"
 
 func check(t *testing.T, groups []int, ck *Clerk) {
+
 	c := ck.Query(-1)
 	if len(c.Groups) != len(groups) {
+		
 		t.Fatalf("wanted %v groups, got %v", len(groups), len(c.Groups))
 	}
 
@@ -86,10 +88,8 @@ func TestBasic(t *testing.T) {
 	ck := cfg.makeClient(cfg.All())
 
 	fmt.Printf("Test: Basic leave/join ...\n")
-
 	cfa := make([]Config, 6)
 	cfa[0] = ck.Query(-1)
-
 	check(t, []int{}, ck)
 
 	var gid1 int = 1

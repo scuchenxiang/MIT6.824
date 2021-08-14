@@ -1,12 +1,15 @@
 package kvraft
 
 import (
-	"6.824/labgob"
-	"6.824/labrpc"
-	"6.824/raft"
+	"bytes"
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"6.824/labgob"
+	"6.824/labrpc"
+	"6.824/raft"
 )
 
 const Debug = false
@@ -18,11 +21,25 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
+type Command int
+
+const (
+	GET = iota + 1
+	PUT
+	APPEND
+)
+
+const serverTimeoutInterval = 500 * time.Millisecond
 
 type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	OpIndex   int64
+	ClientNum int64
+	Command   Command
+	Key       string
+	Value     string
 }
 
 type KVServer struct {
@@ -35,15 +52,13 @@ type KVServer struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
-}
+	isLeader atomic.Value
+	notifyCh chan Op
 
-
-func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
-	// Your code here.
-}
-
-func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// Your code here.
+	// mapmu controls haveDone and storage
+	mapmu    sync.Mutex
+	haveDone map[int64]int64
+	storage  map[string]string
 }
 
 //
@@ -96,6 +111,78 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	// You may need initialization code here.
+	kv.isLeader.Store(true)
+	kv.notifyCh = make(chan Op, 1000)
+	snapshotBytes := kv.rf.GetSnapshot()
+	if len(snapshotBytes) > 0 {
+		r := bytes.NewBuffer(snapshotBytes)
+		d := labgob.NewDecoder(r)
+		var storage map[string]string
+		var haveDone map[int64]int64
+		if d.Decode(&storage) != nil ||
+			d.Decode(&haveDone) != nil {
+			log.Fatalf("[listener] %v decode error", kv.me)
+		} else {
+			kv.storage = storage
+			kv.haveDone = haveDone
+		}
+	} else {
+		kv.storage = make(map[string]string)
+		kv.haveDone = make(map[int64]int64)
+	}
+	DPrintf("[StartKVServer] %v init storage=%v", kv.me, kv.storage)
+	go kv.listener()
 
 	return kv
+}
+
+func (kv *KVServer) listener() {
+	for msg := range kv.applyCh {
+		kv.mapmu.Lock()
+
+		isLeader := kv.isLeader.Load().(bool)
+		DPrintf("[listener] %v get msg=%+v, isLeader=%v", kv.me, msg, isLeader)
+		if msg.CommandValid == true {
+			//非阻塞接收数据
+			m, ok := msg.Command.(Op)
+			if !ok {
+				panic("assert error")
+			}
+			if _, ok := kv.haveDone[m.ClientNum]; !ok || m.OpIndex != kv.haveDone[m.ClientNum] {
+				if m.Command == PUT {
+					kv.storage[m.Key] = m.Value
+				} else if m.Command == APPEND {
+					kv.storage[m.Key] = kv.storage[m.Key] + m.Value
+				}
+				kv.haveDone[m.ClientNum] = m.OpIndex
+			}
+			if kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() > kv.maxraftstate {
+				w := new(bytes.Buffer)
+				e := labgob.NewEncoder(w)
+				e.Encode(kv.storage)
+				e.Encode(kv.haveDone)
+				bs := w.Bytes()
+				kv.rf.Snapshot(msg.CommandIndex, bs)
+			}
+			if isLeader {
+				kv.notifyCh <- m
+			}
+		} else {
+			if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot) {
+				r := bytes.NewBuffer(msg.Snapshot)
+				d := labgob.NewDecoder(r)
+				var storage map[string]string
+				var haveDone map[int64]int64
+				if d.Decode(&storage) != nil ||
+					d.Decode(&haveDone) != nil {
+					log.Fatalf("[listener] %v decode error", kv.me)
+				} else {
+					kv.storage = storage
+					kv.haveDone = haveDone
+				}
+				DPrintf("[listener] %v replace storage to %v", kv.me, kv.storage)
+			}
+		}
+		kv.mapmu.Unlock()
+	}
 }

@@ -4,13 +4,16 @@ package shardctrler
 // Shardctrler clerk.
 //
 
-import "6.824/labrpc"
+import (
+	"6.824/labrpc"
+)
 import "time"
 import "crypto/rand"
 import "math/big"
 
 type Clerk struct {
 	servers []*labrpc.ClientEnd
+	id int64
 	// Your data here.
 }
 
@@ -24,12 +27,19 @@ func nrand() int64 {
 func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
+	ck.id=nrand()
 	// Your code here.
 	return ck
 }
-
+func (ck *Clerk) genMsgId() int64 {//随机生成的
+	return int64(nrand())
+}
 func (ck *Clerk) Query(num int) Config {
-	args := &QueryArgs{}
+	args := &QueryArgs{
+		Num:num,
+		ClientId:ck.id,
+		MsgId:ck.genMsgId(),
+	}
 	// Your code here.
 	args.Num = num
 	for {
@@ -37,7 +47,9 @@ func (ck *Clerk) Query(num int) Config {
 		for _, srv := range ck.servers {
 			var reply QueryReply
 			ok := srv.Call("ShardCtrler.Query", args, &reply)
+
 			if ok && reply.WrongLeader == false {
+
 				return reply.Config
 			}
 		}
@@ -46,7 +58,11 @@ func (ck *Clerk) Query(num int) Config {
 }
 
 func (ck *Clerk) Join(servers map[int][]string) {
-	args := &JoinArgs{}
+	args := &JoinArgs{
+		ClientId: ck.id,
+		MsgId:ck.genMsgId(),
+		Servers:  servers,
+	}
 	// Your code here.
 	args.Servers = servers
 
@@ -64,7 +80,11 @@ func (ck *Clerk) Join(servers map[int][]string) {
 }
 
 func (ck *Clerk) Leave(gids []int) {
-	args := &LeaveArgs{}
+	args := &LeaveArgs{
+		ClientId: ck.id,
+		MsgId:ck.genMsgId(),
+		GIDs:     gids,
+	}
 	// Your code here.
 	args.GIDs = gids
 
@@ -82,7 +102,12 @@ func (ck *Clerk) Leave(gids []int) {
 }
 
 func (ck *Clerk) Move(shard int, gid int) {
-	args := &MoveArgs{}
+	args := &MoveArgs{
+		Shard:    shard,
+		GID:      gid,
+		ClientId: ck.id,
+		MsgId:ck.genMsgId(),
+	}
 	// Your code here.
 	args.Shard = shard
 	args.GID = gid
