@@ -20,6 +20,7 @@ import "time"
 // please use this function,
 // and please do not change it.
 //
+//寻找key的内容在哪个shard中
 func key2shard(key string) int {
 	shard := 0
 	if len(key) > 0 {
@@ -39,6 +40,7 @@ func nrand() int64 {
 type Clerk struct {
 	sm       *shardctrler.Clerk
 	config   shardctrler.Config
+	// string为类型，然后返回labrpc.ClientEnd的可以发送RPC的类型
 	make_end func(string) *labrpc.ClientEnd
 
 	id 	   int64
@@ -75,12 +77,13 @@ func (ck *Clerk) Get(key string) string {
 	ck.seqnum += 1
 
 	args := GetArgs{Key:key, CltId:ck.id, SeqNum:ck.seqnum}
-
+	//对于key所处的shard的group的每个server，发送get请求
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
 		if servers, ok := ck.config.Groups[gid]; ok {
-			// try each server for the shard.
+			// 构建客户端，发起RPC，try each server for the shard.
+			
 			for si := 0; si < len(servers); si++ {
 				srv := ck.make_end(servers[si])
 				var reply GetReply
@@ -97,7 +100,7 @@ func (ck *Clerk) Get(key string) string {
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
-		// ask master for the latest configuration.
+		// 请求最新的配置
 		ck.config = ck.sm.Query(-1)
 	}
 

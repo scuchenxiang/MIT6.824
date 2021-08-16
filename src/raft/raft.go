@@ -103,7 +103,7 @@ func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply
 // term. the third return value is true if this server believes it is
 // the leader.
 //客户端向Leader发起请求，
-// 针对Leader返回，当前任期和是不是Leader,调用leaderHandler协程
+// 针对Leader返回，最后一条日志的索引，当前任期和是不是Leader,调用leaderHandler协程
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()

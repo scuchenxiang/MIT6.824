@@ -13,7 +13,7 @@ const (
 	OK            = "OK"
 	ErrNoKey      = "ErrNoKey"
 	ErrWrongGroup = "ErrWrongGroup"
-	ErrInTransit  = "ErrInTransit"
+	ErrInTransit  = "ErrInTransit"//正在传输中
 )
 
 type Err string
