@@ -48,14 +48,15 @@ func (rf *Raft) sendHeartbeat(server int, startTerm int, prevLogIndex int, prevL
 	myCommitIndex:=rf.commitIndex
 
 	serverCommitIndex:=rf.matchIndex[server]
-	// 已经提交的日志必须复制到其他的服务器
-	if myCommitIndex>serverCommitIndex{
+	// 已经提交的日志必须大于已经复制到其他的服务器的索引
+	if myCommitIndex>=serverCommitIndex{
 		return
 	}
 	//复制的日志和当前任期不一致，跨越任期的日志
 	rf.logmu.Lock()
 	serverCommitTerm:=rf.getLogTerm(serverCommitIndex)
 	rf.logmu.Unlock()
+	//对应fig8的情况，如果复制的日志的任期和当前的任期不一致，那么不能提交
 	if myCommitIndex>=serverCommitIndex||serverCommitTerm!=rf.currentTerm{
 		return
 	}

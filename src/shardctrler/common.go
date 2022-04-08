@@ -24,11 +24,23 @@ const NShards = 10
 
 // A configuration -- an assignment of shards to groups.
 // Please don't change this.
+//Shards获取对应的shard的groupId
+//group获取对应group的机器
 type Config struct {
 	Num    int              // config number
 	Shards [NShards]int     // shard -> gid
 	Groups map[int][]string // gid -> servers[]
 }
+
+type Config_num struct {
+	gid int
+	shard_num int
+}
+type Config_num_list []Config_num
+func (p Config_num_list) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func (p Config_num_list) Len() int           { return len(p) }
+func (p Config_num_list) Less(i, j int) bool { return p[i].shard_num > p[j].shard_num }
+
 func init() {
 	labgob.Register(Config{})
 	labgob.Register(QueryArgs{})

@@ -23,11 +23,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
 	//"6.824/labgob"
 	"6.824/labrpc"
 	//"../labrpc"
 )
+
+
 
 // return currentTerm and whether this server
 // believes it is the leader.
@@ -183,9 +184,11 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.logs=append(rf.logs,&Entry{Term:0,Index:0})
 	//崩溃之后从persist中恢复
 	rf.readPersist(persister.ReadRaftState(),persister.ReadSnapshot())
-
+	//对应参与者，候选者，leader的三种状态，做不同的事情
 	go rf.electionTicker()
+	//go rf.startElection(rf.currentTerm)
 	go rf.leaderTicker()
+	//go rf.mainLoop()
 	return rf
 
 }

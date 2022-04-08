@@ -1,19 +1,16 @@
 package kvraft
 
-import (
-	"fmt"
-	"io/ioutil"
-	"math/rand"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"testing"
-	"time"
-
-	"6.824/models"
-	"6.824/porcupine"
-)
+import "6.824/porcupine"
+import "6.824/models"
+import "testing"
+import "strconv"
+import "time"
+import "math/rand"
+import "strings"
+import "sync"
+import "sync/atomic"
+import "fmt"
+import "io/ioutil"
 
 // The tester generously allows solutions to complete elections in one second
 // (much more than the paper's range of timeouts).
@@ -43,7 +40,9 @@ func (log *OpLog) Read() []porcupine.Operation {
 // get/put/putappend that keep counts
 func Get(cfg *config, ck *Clerk, key string, log *OpLog, cli int) string {
 	start := time.Now().UnixNano()
+	//fmt.Println("[Before get]... ...")
 	v := ck.Get(key)
+	//fmt.Println("[Get done]... ...")
 	end := time.Now().UnixNano()
 	cfg.op()
 	if log != nil {
@@ -94,7 +93,7 @@ func Append(cfg *config, ck *Clerk, key string, value string, log *OpLog, cli in
 func check(cfg *config, t *testing.T, ck *Clerk, key string, value string) {
 	v := Get(cfg, ck, key, nil, -1)
 	if v != value {
-		t.Fatalf("Get(%v): expected:\n%v\nreceived:\n%v", key, value, v)
+		t.Fatalf("OpGet(%v): expected:\n%v\nreceived:\n%v", key, value, v)
 	}
 }
 
@@ -115,17 +114,17 @@ func spawn_clients_and_wait(t *testing.T, cfg *config, ncli int, fn func(me int,
 		ca[cli] = make(chan bool)
 		go run_client(t, cfg, cli, ca[cli], fn)
 	}
-	DPrintf("spawn_clients_and_wait: waiting for clients")
+	// log.Printf("spawn_clients_and_wait: waiting for clients")
 	for cli := 0; cli < ncli; cli++ {
 		ok := <-ca[cli]
-		DPrintf("spawn_clients_and_wait: client %d is done\n", cli)
+		// log.Printf("spawn_clients_and_wait: client %d is done\n", cli)
 		if ok == false {
 			t.Fatalf("failure")
 		}
 	}
 }
 
-// predict effect of Append(k, val) if old value is prev.
+// predict effect of OpAppend(k, val) if old value is prev.
 func NextValue(prev string, val string) string {
 	return prev + val
 }
@@ -138,14 +137,14 @@ func checkClntAppends(t *testing.T, clnt int, v string, count int) {
 		wanted := "x " + strconv.Itoa(clnt) + " " + strconv.Itoa(j) + " y"
 		off := strings.Index(v, wanted)
 		if off < 0 {
-			t.Fatalf("%v missing element %v in Append result %v", clnt, wanted, v)
+			t.Fatalf("%v missing element %v in OpAppend result %v", clnt, wanted, v)
 		}
 		off1 := strings.LastIndex(v, wanted)
 		if off1 != off {
-			t.Fatalf("duplicate element %v in Append result", wanted)
+			t.Fatalf("duplicate element %v in OpAppend result", wanted)
 		}
 		if off <= lastoff {
-			t.Fatalf("wrong order for element %v in Append result", wanted)
+			t.Fatalf("wrong order for element %v in OpAppend result", wanted)
 		}
 		lastoff = off
 	}
@@ -161,14 +160,14 @@ func checkConcurrentAppends(t *testing.T, v string, counts []int) {
 			wanted := "x " + strconv.Itoa(i) + " " + strconv.Itoa(j) + " y"
 			off := strings.Index(v, wanted)
 			if off < 0 {
-				t.Fatalf("%v missing element %v in Append result %v", i, wanted, v)
+				t.Fatalf("%v missing element %v in OpAppend result %v", i, wanted, v)
 			}
 			off1 := strings.LastIndex(v, wanted)
 			if off1 != off {
-				t.Fatalf("duplicate element %v in Append result", wanted)
+				t.Fatalf("duplicate element %v in OpAppend result", wanted)
 			}
 			if off <= lastoff {
-				t.Fatalf("wrong order for element %v in Append result", wanted)
+				t.Fatalf("wrong order for element %v in OpAppend result", wanted)
 			}
 			lastoff = off
 		}
@@ -197,7 +196,7 @@ func partitioner(t *testing.T, cfg *config, ch chan bool, done *int32) {
 	}
 }
 
-// Basic test is as follows: one or more clients submitting Append/Get
+// Basic test is as follows: one or more clients submitting OpAppend/OpGet
 // operations to set of servers for some period of time.  After the period is
 // over, test checks that all appended values are present and in order for a
 // particular key.  If unreliable is set, RPCs may fail.  If crash is set, the
@@ -250,7 +249,7 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 		clnts[i] = make(chan int)
 	}
 	for i := 0; i < 3; i++ {
-		DPrintf("Iteration %v\n", i)
+		// log.Printf("Iteration %v\n", i)
 		atomic.StoreInt32(&done_clients, 0)
 		atomic.StoreInt32(&done_partitioner, 0)
 		go spawn_clients_and_wait(t, cfg, nclients, func(cli int, myck *Clerk, t *testing.T) {
@@ -271,7 +270,7 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 				}
 				nv := "x " + strconv.Itoa(cli) + " " + strconv.Itoa(j) + " y"
 				if (rand.Int() % 1000) < 500 {
-					DPrintf("[=========]%d: client new append %v\n", cli, nv)
+					// log.Printf("%d: client new append %v\n", cli, nv)
 					Append(cfg, myck, key, nv, opLog, cli)
 					if !randomkeys {
 						last = NextValue(last, nv)
@@ -279,13 +278,12 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 					j++
 				} else if randomkeys && (rand.Int()%1000) < 100 {
 					// we only do this when using random keys, because it would break the
-					// check done after Get() operations
+					// check done after OpGet() operations
 					Put(cfg, myck, key, nv, opLog, cli)
 					j++
 				} else {
-					DPrintf("[=========]%d: client new get %v\n", cli, key)
+					// log.Printf("%d: client new get %v\n", cli, key)
 					v := Get(cfg, myck, key, opLog, cli)
-					DPrintf("[=========]%v: client get key=%v, value=%v\n", cli, key, v)
 					// the following check only makes sense when we're not using random keys
 					if !randomkeys && v != last {
 						t.Fatalf("get wrong value, key %v, wanted:\n%v\n, got\n%v\n", key, last, v)
@@ -315,16 +313,16 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 			// wait for a while so that we have a new term
 			time.Sleep(electionTimeout)
 		}
-
+		fmt.Println("[Before crash]... ...")
 		if crash {
-			DPrintf("shutdown servers\n")
+			// log.Printf("shutdown servers\n")
 			for i := 0; i < nservers; i++ {
 				cfg.ShutdownServer(i)
 			}
 			// Wait for a while for servers to shutdown, since
 			// shutdown isn't a real crash and isn't instantaneous
 			time.Sleep(electionTimeout)
-			DPrintf("restart servers\n")
+			// log.Printf("restart servers\n")
 			// crash and re-start all
 			for i := 0; i < nservers; i++ {
 				cfg.StartServer(i)
@@ -332,15 +330,15 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 			cfg.ConnectAll()
 		}
 
-		DPrintf("wait for clients\n")
+		// log.Printf("wait for clients\n")
 		for i := 0; i < nclients; i++ {
-			DPrintf("read from clients %d\n", i)
+			// log.Printf("read from clients %d\n", i)
 			j := <-clnts[i]
-			if j < 10 {
-				DPrintf("Warning: client %d managed to perform only %d put operations in 1 sec?\n", i, j)
-			}
+			// if j < 10 {
+			// 	log.Printf("Warning: client %d managed to perform only %d put operations in 1 sec?\n", i, j)
+			// }
 			key := strconv.Itoa(i)
-			DPrintf("Check %v for client %d\n", j, i)
+			// log.Printf("Check %v for client %d\n", j, i)
 			v := Get(cfg, ck, key, opLog, 0)
 			if !randomkeys {
 				checkClntAppends(t, i, v, j)
@@ -402,8 +400,8 @@ func GenericTestSpeed(t *testing.T, part string, maxraftstate int) {
 
 	start := time.Now()
 	for i := 0; i < numOps; i++ {
-		DPrintf("[====] op=%v, usetime=%v", i, time.Since(start).Milliseconds())
 		ck.Append("x", "x 0 "+strconv.Itoa(i)+" y")
+		//fmt.Println("[OpAppend Done Once]")
 	}
 	dur := time.Since(start)
 
@@ -414,7 +412,6 @@ func GenericTestSpeed(t *testing.T, part string, maxraftstate int) {
 	const heartbeatInterval = 100 * time.Millisecond
 	const opsPerInterval = 3
 	const timePerOp = heartbeatInterval / opsPerInterval
-	//log.Printf("[Speed3A] speed=%v", dur/numOps)
 	if dur > numOps*timePerOp {
 		t.Fatalf("Operations completed too slowly %v/op > %v/op\n", dur/numOps, timePerOp)
 	}
@@ -488,20 +485,23 @@ func TestOnePartition3A(t *testing.T) {
 
 	p1, p2 := cfg.make_partition()
 	cfg.partition(p1, p2)
-
+	time.Sleep(time.Second * 2)
+	fmt.Println("[Partition OK]... ...")
 	ckp1 := cfg.makeClient(p1)  // connect ckp1 to p1
 	ckp2a := cfg.makeClient(p2) // connect ckp2a to p2
 	ckp2b := cfg.makeClient(p2) // connect ckp2b to p2
 
 	Put(cfg, ckp1, "1", "14", nil, -1)
+	fmt.Println("[Put done]... ...")
 	check(cfg, t, ckp1, "1", "14")
-
+	fmt.Println("[Check done]... ...")
 	cfg.end()
 
 	done0 := make(chan bool)
 	done1 := make(chan bool)
 
 	cfg.begin("Test: no progress in minority (3A)")
+	fmt.Println("[Before goroutine start]... ...")
 	go func() {
 		Put(cfg, ckp2a, "1", "15", nil, -1)
 		done0 <- true
@@ -510,15 +510,15 @@ func TestOnePartition3A(t *testing.T) {
 		Get(cfg, ckp2b, "1", nil, -1) // different clerk in p2
 		done1 <- true
 	}()
-
+	fmt.Println("[Before select]... ...")
 	select {
 	case <-done0:
-		t.Fatalf("Put in minority completed")
+		t.Fatalf("OpPut in minority completed")
 	case <-done1:
-		t.Fatalf("Get in minority completed")
+		t.Fatalf("OpGet in minority completed")
 	case <-time.After(time.Second):
 	}
-
+	fmt.Println("[After second]... ...")
 	check(cfg, t, ckp1, "1", "14")
 	Put(cfg, ckp1, "1", "16", nil, -1)
 	check(cfg, t, ckp1, "1", "16")
@@ -535,14 +535,15 @@ func TestOnePartition3A(t *testing.T) {
 
 	select {
 	case <-done0:
+
 	case <-time.After(30 * 100 * time.Millisecond):
-		t.Fatalf("Put did not complete")
+		t.Fatalf("OpPut did not complete")
 	}
 
 	select {
 	case <-done1:
 	case <-time.After(30 * 100 * time.Millisecond):
-		t.Fatalf("Get did not complete")
+		t.Fatalf("OpGet did not complete")
 	default:
 	}
 

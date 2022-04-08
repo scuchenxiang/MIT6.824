@@ -26,6 +26,9 @@ func (rf *Raft) doInstallSnapshot(server int, startTerm int, LastIncludedIndex i
 		rf.role=Follower
 		rf.votedFor=-1
 		rf.currentTerm=max(rf.currentTerm,startTerm)
+		rf.logmu.Lock()
+		rf.persist()
+		rf.logmu.Unlock()
 		return
 	}
 

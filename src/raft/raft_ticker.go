@@ -26,6 +26,7 @@ func (rf *Raft) leaderHandler() {
 			prevLogIndex2Server:=rf.nextIndex[server]-1
 			//如果日志比目前的最早的日志还旧就安装快照
 			if prevLogIndex2Server<rf.getSnapshotLastIndex(){//rf.getLastLogIndex(),rf.getLastLogTerm()
+				DPrintf("%v install to server %v ,term %v, snapshotIndex %v,snapshotTerm %v",rf.me,server,term,rf.getSnapshotLastIndex(),rf.getSnapshotLastTerm())
 				go rf.doInstallSnapshot(server,term,rf.getSnapshotLastIndex(),rf.getSnapshotLastTerm(),rf.getSnapshotLastData())
 			}else {//服务器i的最后需要发送的日志的上一条日志的任期
 				entries:=[]*Entry{}

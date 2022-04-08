@@ -4,6 +4,7 @@ import (
 	"6.824/shardctrler"
 	"6.824/labrpc"
 	"6.824/raft"
+	"fmt"
 	"sync"
 	"encoding/gob"
 	"time"
@@ -83,7 +84,7 @@ type ShardKV struct {
 // --------------------------------------------------------------------
 
 func (kv *ShardKV) createResChan(cmtidx int) {
-
+	//对于commandindex的位置创建一个通道
 	if kv.resChanMap[cmtidx] == nil {
 		kv.resChanMap[cmtidx] = make(chan ReplyRes, ResChanSize)
 	}
@@ -100,6 +101,8 @@ func flushChannel(resCh chan ReplyRes) {
 }
 
 func (kv *ShardKV) PollConfig() {
+	//每隔一段时间，如果ctrler的配置确实得到新的config，
+	// 如果不需要拉取shard，没有正在传输的config，就更新config，向raft添加日志
 	for {
 		select{
 		case <- kv.killIt://阻塞接收消息
@@ -111,7 +114,7 @@ func (kv *ShardKV) PollConfig() {
 			nextConfigIdx := kv.config.Num + 1  // next config
 			kv.mu.Unlock()
 			newConfig := kv.mck.Query(nextConfigIdx)
-			//如果得到新的config
+			//如果得到新的config,不是-1都能得到
 			if newConfig.Num == nextConfigIdx {  // got new config
 				kv.mu.Lock()
 				okToUpdate := true
@@ -142,6 +145,9 @@ func (kv *ShardKV) PollConfig() {
 }
 
 func (kv *ShardKV) PollShards() {
+	//每隔一段时间，就对pullmap中的需要拉取的shard进行拉取，
+	// 给出args参数，对于返回的reply，如果成功，添加到底层的raft日志中
+	//如果valid为false，说明需要删除，对于返回的reply，如果成功，也添加到日志中
 	for {
 		select{
 		case <- kv.killIt:
@@ -156,6 +162,7 @@ func (kv *ShardKV) PollShards() {
 			kv.mu.Unlock()
 			//对于pullmap的每个需要拉取的shard进行拉取
 			for shardVer, serversValid := range localPullMap {
+				//如果valid为false说明已经拉取过了
 				if serversValid.Valid {
 					// ---- needs shard from others	----
 					for si := 0; si < len(serversValid.Servers); si++ {
@@ -194,6 +201,7 @@ func (kv *ShardKV) PollShards() {
 // --------------------------------------------------------------------
 
 func (kv *ShardKV) PullShard(args *PullShardArgs, reply *PullShardReply) {
+	//如果我的配置号更新，那么就把kvdbs和clientseqNum发送给对方，回应success，否则false
 	kv.mu.Lock()
 	if kv.config.Num >= args.ConfNum {
 		reply.Success = true
@@ -213,7 +221,9 @@ func (kv *ShardKV) PullShard(args *PullShardArgs, reply *PullShardReply) {
 }
 
 func (kv *ShardKV) DeleteShard(args *DeleteShardArgs, reply *DeleteShardReply) {
-
+	//如果我的对应的shard的配置号比参数发过来的配置号更旧，说明确实可以删除，
+	// 此时让底层的raft进行同步命令，如果是leader，并且对应命令的管道信息没有正在传输，
+	// 那么就为success，超时或者其他情况返回false
 	kv.mu.Lock()
 	localShardVerNum := kv.shardsVerNum[args.Shard]
 	localConfNum := args.ConfNum
@@ -232,6 +242,7 @@ func (kv *ShardKV) DeleteShard(args *DeleteShardArgs, reply *DeleteShardReply) {
 		select{
 		case res := <- resCh:
 			if res.InTransit {
+				fmt.Printf("deleteshardOp intransit")
 				reply.Success = false
 			} else {
 				reply.Success = true
@@ -280,6 +291,7 @@ func (kv *ShardKV) ApplyDb() {
 				case ShardConfigOp:  // update config
 				//在applymsg请求的配置更新的情况下，把新配置下属于本group的
 				//如果原来就是这个group的只更新shard版本号，原来不是的，就添加需要pull的shard
+				//配置需要更新的情况下，如果
 					if op.Config.Num > kv.config.Num {
 						for s := 0; s < shardctrler.NShards; s ++ {
 							g := op.Config.Shards[s]
@@ -297,6 +309,8 @@ func (kv *ShardKV) ApplyDb() {
 						kv.config = op.Config
 					}
 					// ------------------- pull shard op -------------------
+					//具体拉取shard，更新了对应shard的kvdb，以及clientseqNum,
+					// 并且将kv.pullMap的valid设置为false，同时更新shardsVerNum
 				case PullShardOp:
 					//拉取shard
 					if kv.pullMap[op.SV].Valid && op.Ver == kv.config.Num - 1 {
@@ -313,6 +327,8 @@ func (kv *ShardKV) ApplyDb() {
 						kv.shardsVerNum[op.SV.Shard] = kv.config.Num  // update version number
 					}
 					// ------------------- delete shard op -------------------
+					//删除shard操作，将对应的kvdbs，clientseqnum置空，
+					//刷新resch，同时如果根据配置号，写入resCh
 				case DeleteShardOp:
 					//刷新resch
 					if kv.shardsVerNum[op.Shard] <= op.ConfNum {
@@ -322,16 +338,21 @@ func (kv *ShardKV) ApplyDb() {
 						resCh <- ReplyRes{InTransit: false}
 					} else {
 						flushChannel(resCh)
+						//这里之所以设置成正在传输，是为了让pullshard协程重试
+						//这个情况出现可能是因为从A到B到C到A，A的配置号反而更新，但是需要删除这个自然不会删除了
 						resCh <- ReplyRes{InTransit: true}
 					}
 					// ------------------- remove pull map op -------------------
+					//删除pullmap的数组
 				case RemovePullMapOp:
 					delete(kv.pullMap, op.SV)
 					// ------------------- client request op -------------------
 				case Op:  // user request
 					// Check shard config
+					//如果是属于本group管理的
 					//在shard版本号和config号对不上时，说明在传输中，刷新resch
-					//不在的时候在添加command，在数据库中执行操作
+					//如果配置号一致，在数据库中执行操作
+					//如果不是这个group管理的，向结果管道写入错误的group
 					shard := key2shard(op.Key)
 					gid := kv.config.Shards[shard]
 					if kv.gid == gid {
@@ -359,6 +380,7 @@ func (kv *ShardKV) ApplyDb() {
 				}
 			}
 			kv.mu.Unlock()
+			//如果raft的大小大于最大大小的一定比例，就存为快照
 			go kv.CheckSnapshot()
 		}
 	}
@@ -531,6 +553,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	//key value database初始化
 	kv.kvdbs = make([]map[string]string, shardctrler.NShards)
 	kv.clientSeqNum = make([]map[int64]int64, shardctrler.NShards)
+	//假设数据为10个分片
 	for i := 0; i < shardctrler.NShards; i ++ {
 		kv.kvdbs[i] = make(map[string]string)
 		kv.clientSeqNum[i] = make(map[int64]int64)

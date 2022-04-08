@@ -8,14 +8,12 @@ package raft
 // test with the original before submitting.
 //
 
-import (
-	"fmt"
-	"math/rand"
-	"sync"
-	"sync/atomic"
-	"testing"
-	"time"
-)
+import "testing"
+import "fmt"
+import "time"
+import "math/rand"
+import "sync/atomic"
+import "sync"
 
 // The tester generously allows solutions to complete elections in one second
 // (much more than the paper's range of timeouts).
@@ -196,9 +194,7 @@ func TestFailAgree2B(t *testing.T) {
 	// able to agree despite the disconnected follower.
 	cfg.one(102, servers-1, false)
 	cfg.one(103, servers-1, false)
-	DPrintf("[======] sleep")
 	time.Sleep(RaftElectionTimeout)
-	DPrintf("[======] sleep done")
 	cfg.one(104, servers-1, false)
 	cfg.one(105, servers-1, false)
 
@@ -642,6 +638,7 @@ func TestPersist22C(t *testing.T) {
 
 	index := 1
 	for iters := 0; iters < 5; iters++ {
+		DPrintf("[TEST2C New ITERS]%d ---------------",iters)
 		cfg.one(10+index, servers, true)
 		index++
 
@@ -662,8 +659,9 @@ func TestPersist22C(t *testing.T) {
 		cfg.connect((leader1 + 1) % servers)
 		cfg.connect((leader1 + 2) % servers)
 
+		DPrintf("--------------------Time.Sleep--------------------")
 		time.Sleep(RaftElectionTimeout)
-
+		DPrintf("--------------------Time.Sleep.Stop--------------------")
 		cfg.start1((leader1+3)%servers, cfg.applier)
 		cfg.connect((leader1 + 3) % servers)
 
@@ -815,7 +813,6 @@ func TestFigure8Unreliable2C(t *testing.T) {
 
 	nup := servers
 	for iters := 0; iters < 1000; iters++ {
-		DPrintf("[==========] iters=%v", iters)
 		if iters == 200 {
 			cfg.setlongreordering(true)
 		}
@@ -1027,7 +1024,6 @@ func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash
 	leader1 := cfg.checkOneLeader()
 
 	for i := 0; i < iters; i++ {
-		DPrintf("[========] iters=%v", i)
 		victim := (leader1 + 1) % servers
 		sender := leader1
 		if i%3 == 1 {

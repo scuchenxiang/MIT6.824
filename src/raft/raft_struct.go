@@ -36,7 +36,7 @@ type Raft struct {
 	lastHeartbeat   time.Time//
 	logs            []*Entry//日志
 	commitIndex     int//提交的日志的最大的索引值
-	nextIndex       []int//对每个服务器需要发送的下一个日志的索引
+	nextIndex       []int//对每个服务器需要复制的下一个日志的索引
 	matchIndex      []int//对每个服务器已经复制的日志的最高索引
 	applyCh         chan ApplyMsg//
 	snapshotData    []byte//快照数据

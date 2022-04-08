@@ -27,7 +27,6 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	reply.Term=rf.currentTerm
 	rf.role=Follower
 	rf.currentTerm=args.Term
-
 	if args.LastIncludedIndex<=rf.getSnapshotLastIndex(){
 		return
 	}
@@ -40,6 +39,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	})
 	if args.LastIncludedIndex<rf.getLastLogIndex(){
 		for i:=args.LastIncludedIndex+1;i<=rf.getLastLogIndex();i++{
+			DPrintf("InstallSnapshot apply entries")
 			Entries=append(Entries,rf.getLog(i))
 		}
 	}

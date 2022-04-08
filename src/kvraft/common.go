@@ -1,33 +1,34 @@
 package kvraft
 
 const (
-	OK             = "OK"
-	ErrNoKey       = "ErrNoKey"
-	ErrWrongLeader = "ErrWrongLeader"
+	OK       = "OK"
+	ErrNoKey = "ErrNoKey"
 )
 
 type Err string
 
 // Put or Append
 type PutAppendArgs struct {
-	ClientNumber    int64
-	Key             string
-	Value           string
-	Op              string // "Put" or "Append"
-	SerializeNumber int64
+	Key    string
+	Value  string
+	Op     string // "Put" or "Append"
+	CltId  int64
+	SeqNum int64
 }
 
 type PutAppendReply struct {
-	Err Err
+	WrongLeader bool
+	Err         Err
 }
 
 type GetArgs struct {
-	ClientNumber    int64
-	Key             string
-	SerializeNumber int64
+	Key    string
+	CltId  int64
+	SeqNum int64
 }
 
 type GetReply struct {
-	Err   Err
-	Value string
+	WrongLeader bool
+	Err         Err
+	Value       string
 }

@@ -11,6 +11,11 @@ import "time"
 import "crypto/rand"
 import "math/big"
 
+
+//这个客户的程序就是，对于已知的server，不断循环去遍历请求，
+// 如果对方不是leader或者返回不对，就休息一段时间，选下一个机器，
+// 其中msgid是随机生成的，ckid也是随机生成的
+
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	id int64

@@ -67,7 +67,9 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	return ck
 }
 
-//
+//对于每个key，获取它所处的shard，然后对负责这个shard的group上的每个server，进行请求，
+// 如果成功，或者没有这个key，返回reply，如果group错误或者正在传输中直接退出
+//同时每隔一段时间向ctrler节点查询最新配置
 // fetch the current value for a key.
 // returns "" if the key does not exist.
 // keeps trying forever in the face of all other errors.

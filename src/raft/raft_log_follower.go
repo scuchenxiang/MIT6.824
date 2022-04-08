@@ -34,20 +34,25 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	prevlogindex:=args.PrevLogIndex
 	rf.logmu.Lock()
 
-	//追加的日志比快照还旧，或者两者在
+	//如果leader已经发送的最后一条日志索引比server的
+	// 快照的最后一条还旧，说明发来的日志有一部分是重复的，直接返回
 	if prevlogindex<rf.getSnapshotLastIndex(){
 		rf.logmu.Unlock()
 		return
 	}
-	//日志比最新的日志还新，或者日志符合要求，但是任期却不一样，或者被其他的服务器安装了不同的快照日志
-	if prevlogindex>rf.getLastLogIndex()||
+	if prevlogindex>rf.getLastLogIndex()||//
 		args.PrevLogTerm!=rf.getLogTerm(prevlogindex)||
 		(prevlogindex==rf.getSnapshotLastIndex()&&args.PrevLogTerm!=rf.getSnapshotLastTerm()){
 		var conflict int
+
+		//如果leader已经发送的最后一条日志记录和server的冲突了，同时leader的lastcopyindex大于快照日志
+		//索引小于server最大的日志索引直接回退到这个任期的第一条日志（说明下一次leader从这个任期的
+		//第一条开始发）。如果同时leader的lastcopyindex大于server最大的日志索引，那么直接返回快照的
+		// 最大索引+1。
 		if prevlogindex<=rf.getLastLogIndex(){
 			conflictTerm:=rf.getLogTerm(prevlogindex)
 			conflict=prevlogindex
-			//这就是在日志符合要求，但是任期却不一样，或者被其他的服务器安装了不同的快照日志的情况下的处理
+
 			for conflict-1>=rf.getSnapshotLastIndex()&&rf.getLogTerm(conflict-1)==conflictTerm{
 				conflict--
 			}
@@ -63,19 +68,20 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	if len(args.Entries)>0{
 		newLog := make([]*Entry, 0)
-		//只能复制从0到PrevLogIndex再追加日志，多余的日志可能是不一致的
 		for i := rf.logs[0].Index; i <= args.PrevLogIndex; i++ {
 			newLog = append(newLog, rf.getLog(i))
 		}
 		newLog = append(newLog, args.Entries...)
+		//前面保证了lastcopyIndex在lastSnapshotIndex与lastLogIndex之间，
+		//然后追加日志（如果追加的日志比lastLogIndex小就不用追加）
 		if moreUpToDate(newLog[len(newLog)-1].Index,newLog[len(newLog)-1].Term,rf.getLastLogIndex(),rf.getLastLogTerm()){
 			rf.logs=newLog
 		}
 		rf.persist()
 	}
 	myCommitIndex := rf.commitIndex
-	//在任期和日志符合要求的情况下，将上一次的日志追加到状态机，这次保存的下次追加
-	newCommitIndex := min(args.LeaderCommitIndex, rf.getLastLogIndex())
+	//newCommitIndex := min(args.LeaderCommitIndex, rf.getLastLogIndex())
+	newCommitIndex :=args.LeaderCommitIndex
 	rf.logmu.Unlock()
 	if(myCommitIndex<newCommitIndex){
 		for i:=myCommitIndex+1;i<=newCommitIndex;i++{
