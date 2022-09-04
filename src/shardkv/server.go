@@ -51,6 +51,9 @@ type Op struct {
 	CltId   int64   // client unique identifier
 	SeqNum  int64
 }
+type EmptyLog struct{
+
+}
 
 // --------------------------------------------------------------------
 // ShardKV struct
@@ -100,8 +103,8 @@ func flushChannel(resCh chan ReplyRes) {
 	}
 }
 
-func (kv *ShardKV) PollConfig() {
-	//每隔一段时间，如果ctrler的配置确实得到新的config，
+func (kv *ShardKV) PullConfig() {
+	//每隔一段时间，如果ctrler的配置更新了，注意必须每次+1的配置版本进行更新，
 	// 如果不需要拉取shard，没有正在传输的config，就更新config，向raft添加日志
 	for {
 		select{
@@ -144,7 +147,7 @@ func (kv *ShardKV) PollConfig() {
 	}
 }
 
-func (kv *ShardKV) PollShards() {
+func (kv *ShardKV) PullShards() {
 	//每隔一段时间，就对pullmap中的需要拉取的shard进行拉取，
 	// 给出args参数，对于返回的reply，如果成功，添加到底层的raft日志中
 	//如果valid为false，说明需要删除，对于返回的reply，如果成功，也添加到日志中
@@ -167,11 +170,12 @@ func (kv *ShardKV) PollShards() {
 					// ---- needs shard from others	----
 					for si := 0; si < len(serversValid.Servers); si++ {
 						srv := kv.make_end(serversValid.Servers[si])
+						//VerNum：旧得config号，ConfNum：已经更新得新得config号
 						args := PullShardArgs{Shard:shardVer.Shard, VerNum:shardVer.VerNum, ConfNum:shardVer.ConfNum}
 						var reply PullShardReply
-						ok := srv.Call("ShardKV.PullShard", &args, &reply)
+						ok := srv.Call("ShardKV.G2GPullShardRPC", &args, &reply)
 						if ok && reply.Success {  // got the reply from intended shard group
-
+							//reply.ShardVer 拉到得shard得版本号
 							op := PullShardOp{KvDb: reply.KvDb, CltSqn: reply.CltSqn, SV: shardVer, Ver: reply.ShardVer}
 							kv.rf.Start(op)
 							break  // got response already, no need to try more
@@ -183,7 +187,7 @@ func (kv *ShardKV) PollShards() {
 						srv := kv.make_end(serversValid.Servers[si])
 						args := DeleteShardArgs{Shard:shardVer.Shard, VerNum:shardVer.VerNum, ConfNum:shardVer.ConfNum}
 						var reply DeleteShardReply
-						ok := srv.Call("ShardKV.DeleteShard", &args, &reply)
+						ok := srv.Call("ShardKV.G2GDeleteShardRPC", &args, &reply)
 						if ok && reply.Success {  // got the reply from intended shard group
 							op := RemovePullMapOp{SV: shardVer}
 							kv.rf.Start(op)
@@ -200,10 +204,10 @@ func (kv *ShardKV) PollShards() {
 // Shard Group RPC Functions
 // --------------------------------------------------------------------
 
-func (kv *ShardKV) PullShard(args *PullShardArgs, reply *PullShardReply) {
+func (kv *ShardKV) G2GPullShardRPC(args *PullShardArgs, reply *PullShardReply) {
 	//如果我的配置号更新，那么就把kvdbs和clientseqNum发送给对方，回应success，否则false
 	kv.mu.Lock()
-	if kv.config.Num >= args.ConfNum {
+	if kv.config.Num >= args.ConfNum {//>=
 		reply.Success = true
 		reply.KvDb = make(map[string]string)
 		reply.CltSqn = make(map[int64]int64)
@@ -220,7 +224,7 @@ func (kv *ShardKV) PullShard(args *PullShardArgs, reply *PullShardReply) {
 	kv.mu.Unlock()
 }
 
-func (kv *ShardKV) DeleteShard(args *DeleteShardArgs, reply *DeleteShardReply) {
+func (kv *ShardKV) G2GDeleteShardRPC(args *DeleteShardArgs, reply *DeleteShardReply) {
 	//如果我的对应的shard的配置号比参数发过来的配置号更旧，说明确实可以删除，
 	// 此时让底层的raft进行同步命令，如果是leader，并且对应命令的管道信息没有正在传输，
 	// 那么就为success，超时或者其他情况返回false
@@ -228,7 +232,8 @@ func (kv *ShardKV) DeleteShard(args *DeleteShardArgs, reply *DeleteShardReply) {
 	localShardVerNum := kv.shardsVerNum[args.Shard]
 	localConfNum := args.ConfNum
 	kv.mu.Unlock()
-	if localShardVerNum <= localConfNum {
+	if localShardVerNum < localConfNum {//before is  <=
+		DPrintf("G2GDeleteShardRPC do_raft_op args:config %v  localshrdver: %v  ",localConfNum,localShardVerNum)
 		op := DeleteShardOp{Shard: args.Shard, ConfNum: args.ConfNum}
 		cmtidx, _, isLeader := kv.rf.Start(op)
 		if !isLeader{
@@ -302,6 +307,7 @@ func (kv *ShardKV) ApplyDb() {
 									shardVer := ShardVer{Shard:s, VerNum:kv.config.Num, ConfNum:op.Config.Num}
 									oldServer := kv.config.Groups[kv.config.Shards[s]]
 									serversValid := ServerValid{Servers: oldServer, Valid: true}
+									//pullmap包含了第s个分配，旧得config号，新config号
 									kv.pullMap[shardVer] = serversValid
 								}
 							}
@@ -331,7 +337,10 @@ func (kv *ShardKV) ApplyDb() {
 					//刷新resch，同时如果根据配置号，写入resCh
 				case DeleteShardOp:
 					//刷新resch
-					if kv.shardsVerNum[op.Shard] <= op.ConfNum {
+					DPrintf("DeleteShardOp  localshard:config %v  op:config %v  ",kv.shardsVerNum[op.Shard],op.ConfNum)
+
+					if kv.shardsVerNum[op.Shard] < op.ConfNum {//<=
+						
 						kv.kvdbs[op.Shard] = make(map[string]string)
 						kv.clientSeqNum[op.Shard] = make(map[int64]int64)
 						flushChannel(resCh)
@@ -497,7 +506,6 @@ func (kv *ShardKV) Kill() {
 	close(kv.killIt)
 }
 
-
 //
 // servers[] contains the ports of the servers in this group.
 //
@@ -570,8 +578,8 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.pcTimer = time.NewTimer(time.Duration(PollConfigTimeout)* time.Millisecond)
 	kv.psTimer = time.NewTimer(time.Duration(PollShardsTimeout)* time.Millisecond)
 	
-	go kv.PollConfig()
-	go kv.PollShards()
+	go kv.PullConfig()
+	go kv.PullShards()
 	go kv.ApplyDb()
 	return kv
 }

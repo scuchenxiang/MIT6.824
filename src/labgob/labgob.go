@@ -68,7 +68,10 @@ func RegisterName(name string, value interface{}) {
 func checkValue(value interface{}) {
 	checkType(reflect.TypeOf(value))
 }
-
+//数据安全性检查，发送非大写的RPC会导致错误
+//checkType的思想就是查找t中的结构体，然后遍历字段，
+// 如果是非导出的字段会提示错误。如果t是切片、数组或者指针、
+// 字典等的话，会递归检查它们的元素，直到递归到基本类型才终止
 func checkType(t reflect.Type) {
 	k := t.Kind()
 
@@ -125,7 +128,8 @@ func checkDefault(value interface{}) {
 	}
 	checkDefault1(reflect.ValueOf(value), 1, "")
 }
-
+//用来在decode之前检测decode()的参数中是否
+//提前覆盖了部分或全部数据。checkDefault调用checkDefault1，检测value的数据是否被覆盖了。
 func checkDefault1(value reflect.Value, depth int, name string) {
 	if depth > 3 {
 		return

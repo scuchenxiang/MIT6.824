@@ -1,15 +1,17 @@
 package shardkv
 
-import "6.824/porcupine"
-import "6.824/models"
-import "testing"
+import (
+	"6.824/models"
+	"6.824/porcupine"
+	"io/ioutil"
+	"sync"
+	"sync/atomic"
+	"math/rand"
+	"testing"
+)
 import "strconv"
 import "time"
 import "fmt"
-import "sync/atomic"
-import "sync"
-import "math/rand"
-import "io/ioutil"
 
 const linearizabilityCheckTimeout = 1 * time.Second
 
@@ -816,11 +818,11 @@ func TestChallenge1Delete(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
-//
-// optional test to see whether servers can handle
-// shards that are not affected by a config change
-// while the config change is underway
-//
+
+//optional test to see whether servers can handle
+//shards that are not affected by a config change
+//while the config change is underway
+
 func TestChallenge2Unaffected(t *testing.T) {
 	fmt.Printf("Test: unaffected shard access (challenge 2) ...\n")
 

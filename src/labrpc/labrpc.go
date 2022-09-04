@@ -188,7 +188,9 @@ func (rn *Network) LongDelays(yes bool) {
 
 	rn.longDelays = yes
 }
-
+//通过客户端的endname读取的
+//servername服务器节点
+//server服务，比如raft或者kvraft服务
 func (rn *Network) readEndnameInfo(endname interface{}) (enabled bool,
 	servername interface{}, server *Server, reliable bool, longreordering bool,
 ) {

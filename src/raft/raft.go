@@ -28,8 +28,18 @@ import (
 	//"../labrpc"
 )
 
+func (rf *Raft) HasLogInCurrTerm() bool {
+	var term int
+	var maxLogTerm int
+	rf.mu.Lock()
+	term=rf.currentTerm
+	rf.mu.Unlock()
 
-
+	rf.logmu.Lock()
+	maxLogTerm=rf.getLastLogTerm()
+	rf.logmu.Unlock()
+	return maxLogTerm>=term
+}
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
